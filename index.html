@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LWCIベイジアンネットワーク・シミュレーター</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@600;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0e15;--panel:#111824;--panel2:#0e141e;--line:#1f2b3a;
+  --ink:#e9eef5;--mut:#8693a6;--dim:#5a6678;
+  --node:#142031;--nodeline:#33455e;
+  --prior:#46566e;--post:#4fd6e6;--set:#e9a93c;--neg:#f06a4e;--pos:#5fd49a;
+  --grid:rgba(79,214,230,.045);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--ink);font-family:"Zen Kaku Gothic New",sans-serif}
+body{min-height:100vh;padding:22px 20px 60px;
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px),radial-gradient(circle at 82% 4%,rgba(79,214,230,.07),transparent 55%);
+  background-size:34px 34px,34px 34px,100% 100%}
+.wrap{max-width:1180px;margin:0 auto}
+header{border-bottom:1px solid var(--line);padding-bottom:6px;margin-bottom:8px}
+.htop{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:14px}
+.tag{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--dim);letter-spacing:.16em;text-transform:uppercase}
+h1{font-family:"Shippori Mincho",serif;font-weight:800;font-size:23px;letter-spacing:.03em;margin-top:3px}
+h1 .em{color:var(--post)}
+.subt{color:var(--mut);font-size:12px;margin-top:3px}
+.segwrap{display:flex;align-items:center;gap:9px}
+.segwrap .sl{font-size:11px;color:var(--mut);font-weight:700;letter-spacing:.04em}
+.segsel{background:var(--panel);border:1px solid var(--post);color:var(--ink);font-family:inherit;font-size:13px;font-weight:700;
+  padding:8px 12px;border-radius:9px;cursor:pointer;outline:none;min-width:200px}
+.segsel:hover{border-color:#7be4f2}
+.segsel optgroup{color:var(--mut);font-style:normal;font-weight:700;background:#0d141e}
+.segsel option{color:var(--ink);font-weight:500;background:#0d141e;padding:4px}
+
+.grid{display:block}
+.ctlhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;gap:10px}
+.ctlhead .ct{font-size:10.5px;font-weight:700;color:var(--mut);letter-spacing:.03em}
+.ctlhead .ct b{color:var(--set)}
+.btn.mini{width:auto;padding:3px 10px;font-size:10.5px;margin:0}
+.card{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);border-radius:14px;padding:14px}
+.card h2{font-size:12px;font-weight:700;color:var(--mut);letter-spacing:.12em;text-transform:uppercase;margin-bottom:2px;display:flex;align-items:center;gap:8px}
+.card h2 .dot{width:6px;height:6px;border-radius:50%;background:var(--post);box-shadow:0 0 8px var(--post)}
+.diagram{width:100%;height:min(740px,calc(100vh - 110px));min-height:330px}
+.diagram svg{width:100%;height:100%;display:block;overflow:visible}
+.nodeG{cursor:pointer}
+.ell{fill:var(--node);stroke:#33455e;stroke-width:1.5;transition:stroke .15s,filter .15s}
+.nodeG:hover .ell{stroke:#4a627f}
+.ell.sel{stroke:var(--post);stroke-width:2.5;filter:drop-shadow(0 0 10px rgba(79,214,230,.4))}
+.ell.set{stroke:var(--set);stroke-width:2.5}
+.nname{fill:var(--ink);font-size:15px;font-weight:700;font-family:"Zen Kaku Gothic New";text-anchor:middle}
+.nstat{fill:var(--ink);font-size:15px;font-weight:600;font-family:"IBM Plex Mono";text-anchor:middle}
+.nbadge{font-family:"IBM Plex Mono";font-size:10px;text-anchor:middle}
+.edge{fill:none;stroke:#6c84a4;stroke-width:3.2;opacity:.95}
+.edge.sev{stroke-dasharray:6 7;opacity:.22}
+.elabel{font-family:"IBM Plex Mono";font-size:15px;font-weight:700;text-anchor:middle}
+.pulse{fill:var(--post)}
+
+/* sticky cockpit: gauges + controls pinned together */
+.cockpit{position:sticky;top:0;z-index:50;margin-bottom:9px;padding:6px 9px;
+  background:rgba(10,14,21,.97);backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:11px;
+  box-shadow:0 8px 24px -14px rgba(0,0,0,.85)}
+.topgauge{display:flex;gap:9px;flex-wrap:nowrap;margin-bottom:5px}
+.gz{flex:1 1 0;min-width:0;background:#0d141e;border:1px solid var(--line);border-radius:9px;padding:5px 9px}
+.gz .gn{font-size:11.5px;font-weight:700;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gvals{display:flex;align-items:baseline;justify-content:space-between;gap:6px;white-space:nowrap}
+.gvals .rv{font-family:"IBM Plex Mono";font-size:18px;font-weight:600;color:var(--ink);line-height:1}
+.gvals .rv .u{font-size:10px;color:var(--mut);margin-left:3px;font-weight:400}
+.gvals .zv{font-family:"IBM Plex Mono";font-size:11px;color:var(--mut)}
+
+/* control */
+.selname{font-family:"Shippori Mincho",serif;font-size:18px;font-weight:700}
+.selkind{font-size:11px;color:var(--dim);margin-bottom:10px}
+.ctlrow{margin-bottom:12px}
+.ctlrow .top{display:flex;justify-content:space-between;align-items:baseline}
+.ctlrow label{font-size:12px;color:var(--mut)}
+.ctlrow .num{font-family:"IBM Plex Mono";font-size:13px;color:var(--ink);font-weight:600}
+input[type=range]{-webkit-appearance:none;width:100%;height:3px;border-radius:3px;background:#1a2433;outline:none;margin-top:5px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:var(--set);cursor:pointer;border:2px solid #0a0e15;box-shadow:0 0 0 1px var(--set)}
+input[type=range]:disabled{opacity:.3}
+.real{font-family:"IBM Plex Mono";font-size:10.5px;color:var(--mut);margin-top:4px}
+.toggle{display:flex;gap:7px;margin-bottom:12px}
+.tg{flex:1;background:#16202e;border:1px solid var(--line);color:var(--mut);padding:8px;border-radius:8px;cursor:pointer;font-family:inherit;font-weight:700;font-size:12px;text-align:center;transition:.15s}
+.tg.on{background:var(--set);border-color:var(--set);color:#0a0e15}
+.tg.free.on{background:var(--mut);border-color:var(--mut)}
+.note{font-size:11.5px;line-height:1.55;color:var(--mut);background:#0a0f17;border:1px solid var(--line);border-radius:9px;padding:10px 12px;margin-bottom:10px}
+.note b{color:var(--set)}
+.btn{width:100%;background:#16202e;border:1px solid var(--line);color:var(--ink);padding:9px;border-radius:9px;cursor:pointer;font-family:inherit;font-weight:700;font-size:12.5px;transition:.15s}
+.btn:hover{border-color:var(--post);color:var(--post)}
+.legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:10px;font-size:10.5px;color:var(--mut)}
+.legend span{display:flex;align-items:center;gap:6px}
+.legend i{width:15px;height:3px;border-radius:2px;display:inline-block}
+.foot{margin-top:16px;font-size:11px;color:var(--dim);line-height:1.65}
+.foot b{color:var(--mut)}
+.credit{margin-top:14px;padding-top:12px;border-top:1px solid var(--line);font-size:10.5px;color:var(--dim);line-height:1.6}
+/* quick upstream controls */
+.quick{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+@media(max-width:760px){.quick{grid-template-columns:1fr}}
+.qrow{margin-bottom:0;padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:#0d141e}
+.qrow.active{border-color:var(--set);background:rgba(233,169,60,.06)}
+.qrow .qh{display:flex;justify-content:space-between;align-items:center;margin-bottom:2px}
+.qrow .qnm{font-size:13px;font-weight:700;color:var(--post)}
+.qrow .qsub{display:flex;justify-content:space-between;align-items:baseline;font-size:10px;font-weight:700;color:var(--ink);margin-bottom:0}
+.qrow .qgrid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.qrow .qcol input[type=range]{margin-top:0}
+.qrow .qmu{font-family:"IBM Plex Mono";font-size:11px;color:var(--set);font-weight:600}
+.qrow .qx{font-size:10px;color:var(--dim);cursor:pointer;border:1px solid var(--line);border-radius:5px;padding:1px 6px}
+.qrow .qx:hover{color:var(--neg);border-color:var(--neg)}
+.qrow input[type=range]{margin-top:4px}
+.qrow .qlab{font-size:10px;color:var(--dim);margin-top:5px;display:flex;justify-content:space-between}
+.divh{font-size:11px;color:var(--dim);letter-spacing:.1em;text-transform:uppercase;margin:6px 0 8px;font-family:"IBM Plex Mono"}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="htop">
+    <div>
+      <div class="tag">全国版 LWCI ｜ ガウス型ベイジアンネットワーク ｜ 上流→下流 連鎖</div>
+      <h1>LWCI <span class="em">ベイジアンネットワーク</span>・シミュレーター</h1>
+      <p class="subt">楕円ノードの上流の確率分布を変えると、矢印に沿って下流の分布が連鎖して更新される</p>
+    </div>
+    <div class="segwrap"><span class="sl">セグメント</span><select class="segsel" id="segsel"></select></div>
+  </div>
+</header>
+<div class="cockpit">
+  <div class="topgauge" id="topgauge"></div>
+  <div class="ctlhead"><span class="ct"><b>上流因子の介入</b> — 動かすと町内幸福度→生活満足度→主観的幸福度まで連鎖</span><button class="btn mini" id="reset">既定に戻す</button></div>
+  <div class="quick" id="quick"></div>
+</div>
+
+<div class="grid">
+  <div class="card">
+    <h2><span class="dot"></span>因子ネットワーク（楕円をクリックで選択）</h2>
+    <div class="diagram"><svg id="svg" viewBox="0 40 1000 540" preserveAspectRatio="xMidYMin meet">
+      <defs><marker id="ar" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill="#8ea4c2"/></marker></defs>
+      <g id="edges"></g><g id="pulses"></g><g id="nodes"></g>
+    </svg></div>
+    <div class="legend">
+      <span><i style="background:var(--prior)"></i>事前分布（既定）</span>
+      <span><i style="background:var(--post)"></i>現在の分布</span>
+      <span><i style="background:var(--set)"></i>設定中（上流入力）</span>
+      <span>矢印の数字＝標準化パス係数 β</span>
+    </div>
+  </div>
+</div>
+
+<p class="foot">
+  <b>このネットワーク：</b>全国530市の調査から推定したガウス型ベイジアンネットワーク。3つの体験因子（都市体験・コミュニティ体験・成長体験）→ 町内幸福度 → 生活満足度 → 主観的幸福度。各楕円は確率分布（事前＝薄い線・現在＝濃い線）を持つ。
+  <br><b>連鎖のしくみ：</b>上流ノードの分布（平均μ・ばらつきσ）を設定すると、そのノードへの矢印が切断され（介入）、下流の分布が矢印の係数βに沿って連鎖更新される。平均が動けば下流の中心が動き、ばらつきを広げれば下流の不確実性も広がる。上流は影響を受けない。
+  <br><b>表示：</b>標準得点（平均0・ばらつき1）。値を変えると下流の楕円へ光が流れ、分布の形が変わる。
+</p>
+<p class="credit">© 2026 南雲 岳彦（一般社団法人スマートシティ・インスティテュート 代表理事／慶應義塾大学教授・京都大学客員教授）　閲覧・引用は可（引用時は出典・著作者の明示が必要）／無断複製・改変・転載・商用利用を禁じます</p>
+</div>
+
+<script>
+const GBN={"params": {"全国": {"N": 530, "muR": [0.0, -0.0, 0.0], "SigR": [[1.0, 0.6227, 0.9076], [0.6227, 1.0, 0.6395], [0.9076, 0.6395, 1.0]], "TW": {"b": [-0.0, 0.2086, 0.1587, 0.4754], "v": 0.3875}, "LS": {"b": [-0.0, 0.5117, -0.0427, 0.1721, 0.3346], "v": 0.1473}, "H": {"b": [0.0, 0.4025, 0.294], "v": 0.5577}}, "大都市圏": {"N": 105, "muR": [0.8017, 0.242, 0.7079], "SigR": [[0.5787, 0.3654, 0.6668], [0.3654, 0.6178, 0.5027], [0.6668, 0.5027, 0.984]], "TW": {"b": [0.0591, 0.1269, 0.4533, 0.3355], "v": 0.2653}, "LS": {"b": [0.1016, 0.3586, -0.0454, 0.2642, 0.2664], "v": 0.1197}, "H": {"b": [-0.0851, 0.3896, 0.2238], "v": 0.4165}}, "中規模都市": {"N": 179, "muR": [0.2031, 0.0677, 0.1421], "SigR": [[0.7013, 0.5687, 0.6617], [0.5687, 1.0731, 0.6198], [0.6617, 0.6198, 0.7724]], "TW": {"b": [-0.0609, 0.3096, 0.0931, 0.4407], "v": 0.4082}, "LS": {"b": [-0.0046, 0.4385, -0.048, 0.2046, 0.3641], "v": 0.1415}, "H": {"b": [-0.1009, 0.5195, 0.2253], "v": 0.5729}}, "小規模都市": {"N": 246, "muR": [-0.4899, -0.1525, -0.4056], "SigR": [[0.8528, 0.6042, 0.7273], [0.6042, 1.0583, 0.5703], [0.7273, 0.5703, 0.7794]], "TW": {"b": [0.09, 0.2252, 0.0998, 0.5741], "v": 0.3972}, "LS": {"b": [0.0288, 0.5679, -0.0407, 0.1655, 0.3266], "v": 0.157}, "H": {"b": [0.1531, 0.4624, 0.3257], "v": 0.567}}, "東日本": {"N": 235, "muR": [0.1025, -0.0409, 0.0499], "SigR": [[1.2327, 0.7992, 1.17], [0.7992, 1.0564, 0.8221], [1.17, 0.8221, 1.3171]], "TW": {"b": [-0.0736, 0.1841, 0.128, 0.56], "v": 0.3639}, "LS": {"b": [-0.0295, 0.579, -0.087, 0.1491, 0.3223], "v": 0.1466}, "H": {"b": [-0.0823, 0.2364, 0.4214], "v": 0.4623}}, "中部": {"N": 106, "muR": [-0.2123, 0.0298, -0.1503], "SigR": [[0.6068, 0.3129, 0.4777], [0.3129, 0.7922, 0.2926], [0.4777, 0.2926, 0.5253]], "TW": {"b": [-0.037, 0.3453, 0.1068, 0.2805], "v": 0.3533}, "LS": {"b": [-0.0212, 0.4747, -0.0413, 0.2401, 0.3218], "v": 0.1476}, "H": {"b": [0.0052, 0.5662, 0.2619], "v": 0.5971}}, "西日本": {"N": 189, "muR": [-0.0084, 0.0342, 0.0222], "SigR": [[0.8928, 0.5859, 0.7983], [0.5859, 1.0427, 0.6113], [0.7983, 0.6113, 0.8557]], "TW": {"b": [0.1103, 0.2414, 0.2135, 0.3551], "v": 0.4036}, "LS": {"b": [0.0369, 0.4673, 0.0019, 0.1709, 0.336], "v": 0.1418}, "H": {"b": [0.134, 0.572, 0.1311], "v": 0.5984}}, "東京圏": {"N": 133, "muR": [0.5931, 0.0702, 0.509], "SigR": [[1.0169, 0.8954, 1.0167], [0.8954, 1.3547, 0.9737], [1.0167, 0.9737, 1.2344]], "TW": {"b": [-0.0328, 0.0172, 0.1521, 0.6539], "v": 0.3483}, "LS": {"b": [-0.0111, 0.5847, -0.0476, 0.0864, 0.3398], "v": 0.127}, "H": {"b": [-0.1191, 0.1572, 0.4459], "v": 0.3665}}, "関東圏": {"N": 177, "muR": [0.3038, -0.0525, 0.2767], "SigR": [[1.1816, 0.9096, 1.1096], [0.9096, 1.2233, 0.9398], [1.1096, 0.9398, 1.249]], "TW": {"b": [-0.0575, 0.1106, 0.1177, 0.5843], "v": 0.329}, "LS": {"b": [0.0197, 0.5498, -0.015, 0.1119, 0.2916], "v": 0.1197}, "H": {"b": [-0.1271, 0.2547, 0.3652], "v": 0.4154}}, "関東以外": {"N": 353, "muR": [-0.1523, 0.0263, -0.1387], "SigR": [[0.8395, 0.4908, 0.743], [0.4908, 0.8859, 0.4998], [0.743, 0.4998, 0.8175]], "TW": {"b": [0.032, 0.2878, 0.1639, 0.4211], "v": 0.4114}, "LS": {"b": [-0.001, 0.4768, -0.0482, 0.2199, 0.3535], "v": 0.1587}, "H": {"b": [0.0906, 0.5269, 0.2407], "v": 0.5991}}, "高スコア群": {"N": 177, "muR": [1.0695, 0.8435, 1.0388], "SigR": [[0.3243, 0.1604, 0.3291], [0.1604, 0.5395, 0.2148], [0.3291, 0.2148, 0.5228]], "TW": {"b": [0.0013, -0.0621, 0.2885, 0.6415], "v": 0.3864}, "LS": {"b": [0.0438, 0.4213, -0.0317, 0.1792, 0.3716], "v": 0.1194}, "H": {"b": [-0.1613, 0.4746, 0.2735], "v": 0.4414}}, "中スコア群": {"N": 177, "muR": [-0.0262, -0.0441, -0.0832], "SigR": [[0.1239, -0.0844, 0.0586], [-0.0844, 0.4614, -0.0321], [0.0586, -0.0321, 0.1601]], "TW": {"b": [-0.0494, 0.1606, 0.1187, 0.3469], "v": 0.364}, "LS": {"b": [0.0274, 0.5839, -0.01, 0.1713, 0.3178], "v": 0.1312}, "H": {"b": [0.0305, 0.5685, 0.4359], "v": 0.5841}}, "低スコア群": {"N": 176, "muR": [-1.0492, -0.8039, -0.9611], "SigR": [[0.3088, 0.0467, 0.2152], [0.0467, 0.6412, 0.0845], [0.2152, 0.0845, 0.3086]], "TW": {"b": [0.2537, 0.4847, 0.1226, 0.4242], "v": 0.3712}, "LS": {"b": [-0.0549, 0.5105, -0.076, 0.1843, 0.3112], "v": 0.1868}, "H": {"b": [0.312, 0.6582, 0.2605], "v": 0.5777}}}, "scales": {"TW": {"m": 6.2442, "sd": 0.2959}, "LS": {"m": 6.5316, "sd": 0.4362}, "H": {"m": 6.4116, "sd": 0.2503}}};
+
+const NODES=["U","C","G","TW","LS","H"];
+const NAME={U:"都市体験",C:"コミュニティ体験",G:"成長体験",TW:"町内幸福度",LS:"生活満足度",H:"主観的幸福度"};
+const KIND={U:"体験因子（上流）",C:"体験因子（上流）",G:"体験因子（上流）",TW:"媒介 ／ 協調的幸福",LS:"媒介 ／ 暮らしの充足",H:"結果"};
+const SCKEY={TW:"TW",LS:"LS",H:"H"};
+const POS={U:[175,105],C:[175,300],G:[175,495],TW:[510,150],LS:[510,440],H:[850,295]};
+const RX=98,RY=58;
+const SPEC={TW:{par:["U","C","G"],src:3},LS:{par:["U","C","G","TW"],src:4},H:{par:["LS","TW"],src:5}};
+const ROOTSRC={U:0,C:1,G:2};
+const EDGES=[["U","TW","TW",1],["C","TW","TW",2],["G","TW","TW",3],
+  ["U","LS","LS",1],["C","LS","LS",2],["G","LS","LS",3],["TW","LS","LS",4],
+  ["LS","H","H",1],["TW","H","H",2]];
+
+let seg="全国", sel="U";
+let st={}; NODES.forEach(n=>st[n]={set:false,m:0,s:1});
+
+const dot=(a,b)=>a.reduce((s,v,i)=>s+v*b[i],0);
+
+function buildJoint(){
+  const P=GBN.params[seg];
+  const freeRoots=["U","C","G"].filter(n=>!st[n].set);
+  const Cs=Array.from({length:6},()=>Array(6).fill(0));
+  // correlated block among FREE roots
+  ["U","C","G"].forEach((n,i)=>{
+    if(st[n].set){Cs[i][i]=st[n].s*st[n].s;}
+    else{["U","C","G"].forEach((m,j)=>{ if(!st[m].set) Cs[i][j]=P.SigR[i][j]; });}
+  });
+  Cs[3][3]= st.TW.set? st.TW.s*st.TW.s : P.TW.v;
+  Cs[4][4]= st.LS.set? st.LS.s*st.LS.s : P.LS.v;
+  Cs[5][5]= st.H.set ? st.H.s*st.H.s  : P.H.v;
+  const meanSrc=[
+    st.U.set?st.U.m:P.muR[0], st.C.set?st.C.m:P.muR[1], st.G.set?st.G.m:P.muR[2], 0,0,0];
+  const L={},k={};
+  const unit=i=>{const a=Array(6).fill(0);a[i]=1;return a;};
+  ["U","C","G"].forEach(n=>{L[n]=unit(ROOTSRC[n]);k[n]=0;});
+  ["TW","LS","H"].forEach(n=>{
+    if(st[n].set){L[n]=unit(SPEC[n].src);k[n]=st[n].m;return;}
+    const sp=SPEC[n],b=P[n].b;let lv=Array(6).fill(0),kv=b[0];
+    sp.par.forEach((p,i)=>{lv=lv.map((x,j)=>x+b[i+1]*L[p][j]);kv+=b[i+1]*k[p];});
+    lv[sp.src]+=1;L[n]=lv;k[n]=kv;
+  });
+  const out={};
+  NODES.forEach(n=>{
+    const m=k[n]+dot(L[n],meanSrc);
+    let v=0;for(let i=0;i<6;i++){let r=0;for(let j=0;j<6;j++)r+=Cs[i][j]*L[n][j];v+=L[n][i]*r;}
+    out[n]={m,v:Math.max(v,1e-6)};
+  });
+  return out;
+}
+function priorJoint(){
+  const save=JSON.stringify(st);NODES.forEach(n=>st[n]={set:false,m:0,s:1});
+  const j=buildJoint();st=JSON.parse(save);return j;
+}
+
+// ----- drawing -----
+const XR=[-3.6,3.6];
+function gauss(x,m,v){const s=Math.sqrt(Math.max(v,1e-6));return Math.exp(-((x-m)**2)/(2*s*s))/s;}
+function curveInEllipse(cx,cy,prior,post){
+  // mini distribution inside ellipse: width 2*RX*0.78, baseline at cy+RY*0.42
+  const W=RX*1.55,H=44,bx=cx-W/2,base=cy+RY*0.34;
+  const sc=H/Math.max(1/Math.sqrt(Math.max(prior.v,0.004)),1/Math.sqrt(Math.max(post.v,0.004)),0.7);
+  const path=(m,v)=>{let d="";const N=46;for(let i=0;i<=N;i++){const x=XR[0]+(XR[1]-XR[0])*i/N;const px=bx+W*i/N;const py=base-gauss(x,m,v)*sc;d+=(i?"L":"M")+px.toFixed(1)+","+py.toFixed(1);}return d;}
+  let s=`<path d="${path(prior.m,prior.v)}" fill="none" stroke="var(--prior)" stroke-width="1.5"/>`;
+  s+=`<path d="${path(post.m,post.v)} L${(bx+W).toFixed(1)},${base} L${bx.toFixed(1)},${base} Z" fill="var(--post)" opacity=".13"/>`;
+  s+=`<path d="${path(post.m,post.v)}" fill="none" stroke="var(--post)" stroke-width="2"/>`;
+  // baseline + zero tick
+  const zx=bx+W*(0-XR[0])/(XR[1]-XR[0]);
+  s+=`<line x1="${bx}" y1="${base}" x2="${bx+W}" y2="${base}" stroke="#1f2b3a" stroke-width="1"/>`;
+  s+=`<line x1="${zx}" y1="${base}" x2="${zx}" y2="${base-H*0.9}" stroke="#1f2b3a" stroke-width="1"/>`;
+  return s;
+}
+function ellipseBoundary(cx,cy,tx,ty){
+  let dx=tx-cx,dy=ty-cy;const t=1/Math.sqrt((dx/RX)**2+(dy/RY)**2);return [cx+dx*t,cy+dy*t];
+}
+function edgePath(a,b){
+  const [ax,ay]=POS[a],[bx,by]=POS[b];
+  const [sx,sy]=ellipseBoundary(ax,ay,bx,by);
+  const [ex,ey]=ellipseBoundary(bx,by,ax,ay);
+  const mx=(sx+ex)/2,my=(sy+ey)/2;
+  // slight curve: offset control perpendicular
+  const dx=ex-sx,dy=ey-sy,len=Math.hypot(dx,dy);
+  const off=Math.min(40,len*0.12)*(a==="TW"&&b==="LS"?0: (ay<by?1:-1)*0.6);
+  const cxp=mx- dy/len*off, cyp=my+ dx/len*off;
+  return {d:`M${sx.toFixed(1)},${sy.toFixed(1)} Q${cxp.toFixed(1)},${cyp.toFixed(1)} ${ex.toFixed(1)},${ey.toFixed(1)}`,
+    sx,sy,ex,ey,cxp,cyp};
+}
+function bez(p,t){const u=1-t;return [u*u*p.sx+2*u*t*p.cxp+t*t*p.ex, u*u*p.sy+2*u*t*p.cyp+t*t*p.ey];}
+
+let EP={}; // edge geometry cache
+function render(animFrom){
+  const P=GBN.params[seg];
+  const prior=priorJoint(), post=buildJoint();
+
+  // edges
+  const eg=document.getElementById("edges");eg.innerHTML="";EP={};
+  EDGES.forEach(([a,b,eq,pi])=>{
+    const p=edgePath(a,b);EP[a+">"+b]=p;
+    const sev=st[b].set;
+    const beta=P[eq].b[pi];
+    const w=(2.4+Math.min(Math.abs(beta),0.9)*6).toFixed(1);
+    eg.insertAdjacentHTML("beforeend",`<path class="edge${sev?' sev':''}" d="${p.d}" style="stroke-width:${w}" marker-end="url(#ar)"/>`);
+    const [lx,ly]=bez(p,0.52);
+    const col=Math.abs(beta)<0.001?'#56627a':(beta>0?'var(--pos)':'var(--neg)');
+    eg.insertAdjacentHTML("beforeend",`<rect x="${lx-24}" y="${ly-13}" width="48" height="24" rx="6" fill="#0a0f17" opacity="${sev?0.3:0.95}"/><text class="elabel" x="${lx}" y="${ly+5}" fill="${col}" opacity="${sev?0.35:1}">${beta.toFixed(2)}</text>`);
+  });
+
+  // nodes
+  const ng=document.getElementById("nodes");ng.innerHTML="";
+  NODES.forEach(n=>{
+    const [cx,cy]=POS[n];const cls=(n===sel?" sel":"")+(st[n].set?" set":"");
+    const badge=st[n].set?`<text class="nbadge" x="${cx}" y="${cy-RY+30}" fill="var(--set)">● 設定中</text>`:"";
+    const sd=Math.sqrt(post[n].v);
+    ng.insertAdjacentHTML("beforeend",
+      `<g class="nodeG" data-n="${n}">
+        <ellipse class="ell${cls}" cx="${cx}" cy="${cy}" rx="${RX}" ry="${RY}"/>
+        <text class="nname" x="${cx}" y="${cy-RY+19}">${NAME[n]}</text>
+        ${badge}
+        ${curveInEllipse(cx,cy,prior[n],post[n])}
+        <text class="nstat" x="${cx}" y="${cy+RY-12}">μ ${post[n].m.toFixed(2)}　σ ${sd.toFixed(2)}</text>
+      </g>`);
+  });
+  document.querySelectorAll(".nodeG").forEach(g=>g.onclick=()=>{sel=g.dataset.n;render();});
+
+  buildQuick();
+  updateGauges(post);
+  if(animFrom) pulse(animFrom);
+}
+
+const GZ=[["H","主観的幸福度","var(--set)"],["LS","生活満足度","var(--post)"],["TW","町内幸福度","var(--pos)"]];
+function updateGauges(post){
+  const el=document.getElementById("topgauge");
+  if(!el.dataset.built){
+    el.innerHTML=GZ.map(([n,label,c])=>`
+      <div class="gz" data-n="${n}">
+        <div class="gn" style="color:${c}">${label}</div>
+        <div class="gvals"><span class="rv"><b class="rvn">–</b><span class="u">実値</span></span><span class="zv">μ <b class="z">–</b>　σ <b class="sg">–</b></span></div>
+      </div>`).join("");
+    el.dataset.built="1";
+  }
+  GZ.forEach(([n,label,c])=>{
+    const g=el.querySelector('.gz[data-n="'+n+'"]');
+    const z=post[n].m, sd=Math.sqrt(post[n].v), sc=GBN.scales[n];
+    g.querySelector(".z").textContent=(z>=0?"+":"")+z.toFixed(2);
+    g.querySelector(".sg").textContent=sd.toFixed(2);
+    g.querySelector(".rvn").textContent=(sc.m+z*sc.sd).toFixed(2);
+  });
+}
+
+const FACT=[["U","都市体験"],["C","コミュニティ体験"],["G","成長体験"]];
+function buildQuick(){
+  const q=document.getElementById("quick");
+  if(!q.dataset.built){
+    q.innerHTML=FACT.map(([n,nm])=>`
+      <div class="qrow" id="q-${n}">
+        <div class="qh"><span class="qnm">${nm}</span><span class="qx" id="qx-${n}">解除</span></div>
+        <div class="qgrid">
+          <div class="qcol">
+            <div class="qsub"><span>平均 μ</span><span class="qmu" id="qmu-${n}">既定</span></div>
+            <input type="range" id="qslm-${n}" min="-3" max="3" step="0.05">
+          </div>
+          <div class="qcol">
+            <div class="qsub"><span>ばらつき σ</span><span class="qmu" id="qsg-${n}">1.00</span></div>
+            <input type="range" id="qsls-${n}" min="0.05" max="1.6" step="0.05">
+          </div>
+        </div>
+      </div>`).join("");
+    q.dataset.built="1";
+    FACT.forEach(([n])=>{
+      document.getElementById("qslm-"+n).oninput=e=>{st[n]={set:true,m:parseFloat(e.target.value),s:st[n].s||1};render(n);};
+      document.getElementById("qsls-"+n).oninput=e=>{st[n]={set:true,m:st[n].m||0,s:parseFloat(e.target.value)};render(n);};
+      document.getElementById("qx-"+n).onclick=()=>{st[n]={set:false,m:0,s:1};render();};
+    });
+  }
+  FACT.forEach(([n])=>{
+    const row=document.getElementById("q-"+n);
+    row.classList.toggle("active",st[n].set);
+    document.getElementById("qslm-"+n).value=st[n].m;
+    document.getElementById("qsls-"+n).value=st[n].s;
+    document.getElementById("qmu-"+n).textContent=st[n].set?((st[n].m>=0?"+":"")+st[n].m.toFixed(2)):"既定";
+    document.getElementById("qsg-"+n).textContent=st[n].s.toFixed(2);
+  });
+}
+
+function affectedEdges(from){
+  // BFS depth of every node whose value is changed by `from` (from + descendants)
+  const kids={U:["TW","LS"],C:["TW","LS"],G:["TW","LS"],TW:["LS","H"],LS:["H"],H:[]};
+  const depth={};depth[from]=0;let frontier=[from];
+  while(frontier.length){const next=[];frontier.forEach(x=>kids[x].forEach(c=>{if(depth[c]===undefined){depth[c]=depth[x]+1;next.push(c);}}));frontier=next;}
+  // every edge whose SOURCE is a changed node carries the propagation (incl. LS→H and TW→H)
+  return EDGES.filter(([a,b])=>depth[a]!==undefined).map(([a,b])=>({a,b,d:depth[a]}));
+}
+function pulse(from){
+  const pg=document.getElementById("pulses");
+  affectedEdges(from).forEach(({a,b,d})=>{
+    const p=EP[a+">"+b];if(!p)return;
+    const c=document.createElementNS("http://www.w3.org/2000/svg","circle");
+    c.setAttribute("r","5");c.setAttribute("class","pulse");pg.appendChild(c);
+    const t0=performance.now()+d*150;          // stage by depth so waves flow outward
+    function step(now){
+      const t=(now-t0)/520;
+      if(t<0){requestAnimationFrame(step);return;}
+      if(t>=1){c.remove();return;}
+      const [x,y]=bez(p,t);c.setAttribute("cx",x);c.setAttribute("cy",y);
+      c.setAttribute("opacity",Math.sin(t*Math.PI));requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  });
+}
+
+function realStr(n,z){const s=GBN.scales[SCKEY[n]];return s?("実値 "+(s.m+z*s.sd).toFixed(2)):"";}
+
+document.getElementById("reset").onclick=()=>{NODES.forEach(n=>st[n]={set:false,m:0,s:1});render();};
+
+const AXES=[
+  ["全国",["全国"]],
+  ["人口規模別",["大都市圏","中規模都市","小規模都市"]],
+  ["エリア別（東・中・西）",["東日本","中部","西日本"]],
+  ["エリア別（同心円）",["関東以外","関東圏","東京圏"]],
+  ["主観スコア別",["高スコア群","中スコア群","低スコア群"]],
+];
+function buildSeg(){
+  const el=document.getElementById("segsel");el.innerHTML="";
+  AXES.forEach(([label,list])=>{
+    const og=document.createElement("optgroup");og.label=label;
+    list.forEach(s=>{
+      const o=document.createElement("option");o.value=s;
+      o.textContent=`${s}（N=${GBN.params[s].N}）`;
+      if(s===seg)o.selected=true;
+      og.appendChild(o);
+    });
+    el.appendChild(og);
+  });
+  el.onchange=e=>{seg=e.target.value;NODES.forEach(n=>st[n]={set:false,m:0,s:1});render();};
+}
+window.addEventListener("resize",()=>render());
+buildSeg();render();
+</script>
+</body>
+</html>
